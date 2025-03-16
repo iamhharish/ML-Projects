@@ -1,0 +1,146 @@
+!pip install faiss-cpu
+# Mount Google Drive
+from google.colab import drive
+drive.mount('/content/drive')
+
+import pandas as pd
+import numpy as np
+import faiss
+import pickle
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# Define file paths
+dataset_path = "/content/drive/MyDrive/Dataset.csv"
+faiss_index_path = "/content/drive/MyDrive/faiss_index.pkl"
+tfidf_vectorizer_path = "/content/drive/MyDrive/tfidf_vectorizer.pkl"
+song_data_path = "/content/drive/MyDrive/song_data.pkl"
+
+# Load dataset
+df = pd.read_csv(dataset_path)
+# Combine features for similarity search
+df["combined_features"] = df["artist"] + " " + df["song"] + " " + df["text"]
+
+# TF-IDF Vectorization (Reduce max_features for memory efficiency)
+tfidf = TfidfVectorizer(stop_words="english", max_features=50000)  # Adjust max_features as needed
+tfidf_matrix = tfidf.fit_transform(df["combined_features"])
+
+# Convert to NumPy array for FAISS
+tfidf_array = tfidf_matrix.astype(np.float32)
+
+# FAISS Index for fast similarity search
+index = faiss.IndexFlatIP(tfidf_array.shape[1])  # Inner Product (cosine similarity)
+index.add(tfidf_array.toarray())
+
+# Save model files in Google Drive
+with open(faiss_index_path, "wb") as f:
+    pickle.dump(index, f)
+
+with open(tfidf_vectorizer_path, "wb") as f:
+    pickle.dump(tfidf, f)
+
+with open(song_data_path, "wb") as f:
+    pickle.dump(df, f)
+
+print("✅ Model training complete. Files saved in Google Drive.")
+
+#UI INTEGRATION
+# Install required packages
+!pip install faiss-cpu scikit-learn pandas numpy
+
+# Import required libraries
+import pandas as pd
+import numpy as np
+import faiss
+import pickle
+from sklearn.feature_extraction.text import TfidfVectorizer
+from google.colab import drive
+
+# Mount Google Drive to save/load models efficiently
+drive.mount('/content/drive')
+
+# Load dataset
+dataset_path = "/content/drive/MyDrive/Dataset.csv"  # Change this path if needed
+df = pd.read_csv(dataset_path)
+
+# Fill missing values to avoid errors
+df.fillna("", inplace=True)
+
+# Combine text features for similarity search
+df["combined_features"] = df["artist"] + " " + df["song"] + " " + df["text"]
+
+# Reduce memory usage by limiting TF-IDF vocabulary size
+tfidf = TfidfVectorizer(stop_words="english", max_features=20000)  # Reduced from 100000 to 20000
+tfidf_matrix = tfidf.fit_transform(df["combined_features"])
+# Convert sparse TF-IDF matrix to a dense NumPy array in smaller batches
+batch_size = 5000  # Process in smaller batches to avoid memory issues
+num_batches = int(np.ceil(tfidf_matrix.shape[0] / batch_size))
+
+# Initialize FAISS index
+index = faiss.IndexFlatIP(tfidf_matrix.shape[1])  # Inner Product (cosine similarity)
+
+for i in range(num_batches):
+    start_idx = i * batch_size
+    end_idx = min((i + 1) * batch_size, tfidf_matrix.shape[0])
+    batch_data = tfidf_matrix[start_idx:end_idx].toarray().astype(np.float32)  # Convert to dense
+    faiss.normalize_L2(batch_data)  # Normalize for better cosine similarity search
+    index.add(batch_data)  # Add to FAISS index
+
+# Save FAISS index and TF-IDF vectorizer
+faiss.write_index(index, "/content/drive/MyDrive/faiss_index.index")
+
+with open("/content/drive/MyDrive/tfidf_vectorizer.pkl", "wb") as f:
+    pickle.dump(tfidf, f)
+
+with open("/content/drive/MyDrive/song_data.pkl", "wb") as f:
+    pickle.dump(df, f)
+
+print("✅ Model training complete. Run 'streamlit run app.py' to launch UI.")
+!pip install streamlit pyngrok
+%%writefile app.py
+import streamlit as st
+import pickle
+import faiss
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# Load necessary files
+faiss_index_path = "/content/drive/MyDrive/faiss_index.index"
+vectorizer_path = "/content/drive/MyDrive/tfidf_vectorizer.pkl"
+song_data_path = "/content/drive/MyDrive/song_data.pkl"
+
+# Load FAISS index
+index = faiss.read_index(faiss_index_path)
+
+# Load TF-IDF vectorizer
+with open(vectorizer_path, "rb") as f:
+    tfidf = pickle.load(f)
+
+# Load song data
+with open(song_data_path, "rb") as f:
+    df = pickle.load(f)
+
+# Streamlit UI
+st.title("🎵 Music Recommendation System")
+st.subheader("Discover songs based on lyrics and artists!")
+
+# Input from user
+query = st.text_input("Enter a song or artist name:")
+
+if query:
+    # Convert query to TF-IDF vector
+    query_vector = tfidf.transform([query]).toarray().astype(np.float32)
+    faiss.normalize_L2(query_vector)
+
+    # Search in FAISS index
+    _, indices = index.search(query_vector, 5)  # Get top 5 recommendations
+
+    # Display results
+    st.subheader("🔍 Recommended Songs")
+    for idx in indices[0]:
+        st.write(f"🎶 {df.iloc[idx]['song']} by {df.iloc[idx]['artist']}")
+!pip install streamlit pyngrok
+!ngrok authtoken AUTH TOKEN
+!streamlit run app.py &>/dev/null & 
+from pyngrok import ngrok
+public_url = ngrok.connect(8501, "http")
+print("Streamlit App URL:", public_url)
